@@ -5,6 +5,23 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pandas.plotting import parallel_coordinates
 from matplotlib import cm
+import glob
+import os
+
+# Diccionario con nombre visible y color por estamento
+estamentos_info = {
+    'Permanente':     {'nombre': 'Permanente',    'color': '#8FC73D'},
+    'No_Permanente':  {'nombre': 'No permanente', 'color': '#589C41'},
+    'PDIF':           {'nombre': 'PDIF',          'color': '#88A4D5'},
+    'Estudiantes':    {'nombre': 'Estudiantes',   'color': '#F8A420'},
+    'PTGAS':          {'nombre': 'PTGAS',         'color': '#0271BA'}
+}
+
+def get_nombre(estamento):
+    return estamentos_info.get(estamento, {'nombre': estamento})['nombre']
+
+def get_color(estamento):
+    return estamentos_info.get(estamento, {'color': '#333333'})['color']
 
 # Cargar datos de participación de 2021 (vuelta 1 y 2)
 participacion_2021_v1 = pd.read_csv('data/2021_v1_participation_data.csv', delimiter='\t')
@@ -15,61 +32,39 @@ participacion_2021_v1.head()
 participacion_2021_v2.head()
 
 # Calcular porcentaje de participación por estamento para cada vuelta
-def calcular_participacion_por_estamento(df):
+def calcular_participacion_est(df: pd.DataFrame) -> pd.Series:
     censo = df.groupby('Category')['Censo'].sum()
     votos = df.groupby('Category')['Votos'].sum()
     porcentaje = 100 * votos/censo
     return porcentaje
 
-participacion_est_v1 = calcular_participacion_por_estamento(participacion_2021_v1)
-participacion_est_v2 = calcular_participacion_por_estamento(participacion_2021_v2)
+participacion_est_v1 = calcular_participacion_est(participacion_2021_v1)
+participacion_est_v2 = calcular_participacion_est(participacion_2021_v2)
 
 participacion_est_v1
 
 participacion_est_v2
 
-# Paleta de colores asociada a cada estamento
-colores_estamentos = {
-    'Permanente': '#1f77b4',
-    'No_Permanente': '#ff7f0e',
-    'PDIF': '#2ca02c',
-    'Estudiantes': '#d62728',
-    'PTGAS': '#9467bd'
-}
-# Asignar color específico a cada estamento
-colores = [colores_estamentos.get(est, '#333333') for est in participacion_est_v1.index]
+# Gráfico de barras
+def graficar_participacion_est(porcentajes, titulo):
+    plt.barh(
+        [get_nombre(est) for est in porcentajes.index],
+        porcentajes.values,
+        color=[get_color(est) for est in porcentajes.index]
+    )
+    plt.xlabel('% Participación')
+    plt.xlim(0, 100)
+    plt.title(titulo)
+    for i, v in enumerate(porcentajes.values):
+        plt.text(v + 1, i, f'{v:.1f}%', va='center', fontsize=10)
+    plt.tight_layout()
+    plt.show()
 
-# Mapeo de nombres para mostrar
-nombre_estamentos = {
-    'Permanente': 'Permanente',
-    'No_Permanente': 'No permanente',
-    'PDIF': 'PDIF',
-    'Estudiantes': 'Estudiantes',
-    'PTGAS': 'PTGAS'
-}
-# Reemplazar nombres para mostrar
-nombres = [nombre_estamentos.get(est, est) for est in participacion_est_v1.index]
+# Participación por estamento (vuelta 1)
+graficar_participacion_est(participacion_est_v1, 'Participación por estamento - Elecciones 2021 (Vuelta 1)')
 
-# Gráfico de barras: Participación por estamento (vuelta 1)
-plt.barh(nombres, participacion_est_v1.values, color=colores)
-plt.xlabel('% Participación')
-plt.title('Participación por estamento - Elecciones 2021 (Vuelta 1)')
-plt.xlim(0, 100)
-# Añadir etiquetas de porcentaje
-for i, v in enumerate(participacion_est_v1.values):
-    plt.text(v + 1, i, f'{v:.1f}%', va='center', fontsize=10)
-plt.tight_layout()
-plt.show()
-
-# Gráfico de barras: Participación por estamento (vuelta 2)
-plt.barh(nombres, participacion_est_v2.values, color=colores)
-plt.xlabel('% Participación')
-plt.title('Participación por estamento - Elecciones 2021 (Vuelta 2)')
-plt.xlim(0, 100)
-for i, v in enumerate(participacion_est_v2.values):
-    plt.text(v + 1, i, f'{v:.1f}%', va='center', fontsize=10)
-plt.tight_layout()
-plt.show()
+# Participación por estamento (vuelta 2)
+graficar_participacion_est(participacion_est_v2, 'Participación por estamento - Elecciones 2021 (Vuelta 2)')
 
 # Cargar datos de votos de 2021 (vuelta 1 y 2)
 votos_v1 = pd.read_csv('data/2021_v1_votes_data.csv', delimiter='\t')
@@ -90,60 +85,55 @@ pesos = {
 }
 
 # Función para calcular los porcentajes de votos ponderados
-def calcular_votos_ponderados(df):
+def calcular_votos_ponderados(df: pd.DataFrame) -> pd.DataFrame:
     # Agrupar por candidato y estamento, sumando los votos
-    grouped = df.groupby(['Candidate', 'Category'])['Votos'].sum().unstack(fill_value=0)
+    grupo = df.groupby(['Candidate', 'Category'])['Votos'].sum().unstack(fill_value=0)
     # Calcular el total de votos por estamento
-    total_by_category = grouped.sum(axis=0)
+    total = grupo.sum(axis=0)
     # Calcular el porcentaje por estamento
-    percentage_by_category = grouped.divide(total_by_category, axis=1) * 100
+    porcentaje = grupo.divide(total, axis=1) * 100
     # Multiplicar por los pesos
-    weighted = percentage_by_category.multiply([pesos[col] for col in percentage_by_category.columns], axis=1)
-    # Sumar entre estamentos para obtener el porcentaje total ponderado
-    weighted['Total'] = weighted.sum(axis=1)
-    return weighted
+    ponderados = porcentaje.multiply([pesos[col] for col in porcentaje.columns], axis=1)
+    return ponderados
 
 # Calcular los votos ponderados para ambas vueltas
-weighted_v1 = calcular_votos_ponderados(votos_v1)
-weighted_v2 = calcular_votos_ponderados(votos_v2)
+ponderados_v1 = calcular_votos_ponderados(votos_v1)
+ponderados_v2 = calcular_votos_ponderados(votos_v2)
 
-weighted_v1
+ponderados_v1
 
-weighted_v2
+ponderados_v2
 
-def graficar_barras_separadas(df, titulo, colores_estamentos, nombres=None):
-    if 'Total' in df.columns:
-        df = df.drop(columns=['Total'])
-
-    df_plot = df.copy()
-    df_plot.index = [nombre.split()[0] for nombre in df_plot.index]  # Abreviar nombres
-    categorias = df_plot.columns
-    candidatos = df_plot.index
+def graficar_barras_separadas(df: pd.DataFrame, titulo: str):
+    df_graf = df.copy()
+    df_graf.index = [nombre.split()[0] for nombre in df_graf.index]  
+    categorias = df_graf.columns
+    candidatos = df_graf.index
     n_categorias = len(categorias)
     n_candidatos = len(candidatos)
 
-    # Si se pasan nombres, usarlos para el eje X
-    if nombres is not None and len(nombres) == n_candidatos:
-        xtick_nombres = nombres
-    else:
-        xtick_nombres = candidatos
-
-    group_width = n_categorias + 1
-    x = np.arange(n_candidatos * group_width)
+    nombres_xtick = candidatos
+    ancho_grupo = n_categorias + 1
+    x = np.arange(n_candidatos * ancho_grupo)
     fig, ax = plt.subplots(figsize=(12, 6))
 
     for i, categoria in enumerate(categorias):
-        posiciones = x[i::group_width]
-        ax.bar(posiciones, df_plot[categoria], width=0.8,
-               label=categoria, color=colores_estamentos.get(categoria, '#333333'))
+        posiciones = x[i::ancho_grupo]
+        ax.bar(
+            posiciones, 
+            df_graf[categoria], 
+            width=0.8,
+            label=get_nombre(categoria), 
+            color=get_color(categoria)
+        )
 
-        for pos, valor in zip(posiciones, df_plot[categoria]):
+        for pos, valor in zip(posiciones, df_graf[categoria]):
             if not np.isnan(valor) and valor > 0:
                 ax.text(pos, valor + 0.2, f'{valor:.1f}%', ha='center', va='bottom', fontsize=8)
 
-    posiciones_candidatos = x[::group_width] + (n_categorias - 1) / 2
+    posiciones_candidatos = x[::ancho_grupo] + (n_categorias - 1) / 2
     ax.set_xticks(posiciones_candidatos)
-    ax.set_xticklabels(xtick_nombres)
+    ax.set_xticklabels(nombres_xtick)
     ax.set_xlabel('Candidatura')
     ax.set_ylabel('% Votos ponderados')
     ax.set_title(titulo)
@@ -151,62 +141,59 @@ def graficar_barras_separadas(df, titulo, colores_estamentos, nombres=None):
     plt.tight_layout()
     plt.show()
 
-# Aplicar la función a los datos ya procesados
-graficar_barras_separadas(weighted_v1, 'Porcentaje de votos ponderados por candidatura (Primera vuelta 2021)', colores_estamentos, nombres)
+graficar_barras_separadas(ponderados_v1, 'Porcentaje de votos ponderados por candidatura (Primera vuelta 2021)')
 
-# Función para graficar barras apiladas con etiquetas internas y totales
-def graficar_barras_apiladas(df, titulo):
-    df_plot = df.copy()
-    if 'Total' in df_plot.columns:
-        total = df_plot['Total']
-        df_plot = df_plot.drop(columns=['Total'])
-    else:
-        total = df_plot.sum(axis=1)
+graficar_barras_separadas(ponderados_v2, 'Porcentaje de votos ponderados por candidatura (Segunda vuelta 2021)')
 
-    df_plot.index = [nombre.split()[0] for nombre in df_plot.index]  # Abreviar nombres
-    df_plot = df_plot[list(colores_estamentos.keys())]  # Asegurar orden de columnas
+def graficar_barras_apiladas(df: pd.DataFrame, titulo: str):
+    df_graf = df.copy()
+    total = df_graf.sum(axis=1)
+
+    df_graf.index = [nombre.split()[0] for nombre in df_graf.index]  
+    df_graf = df_graf[list(estamentos_info.keys())]  
 
     fig, ax = plt.subplots(figsize=(10, 6))
-    bottom = np.zeros(len(df_plot))
+    acumulado = np.zeros(len(df_graf))
 
-    for estamento in df_plot.columns:
-        valores = df_plot[estamento]
-        barras = ax.bar(df_plot.index, valores, bottom=bottom, color=colores_estamentos[estamento], label=estamento)
+    for estamento in df_graf.columns:
+        valores = df_graf[estamento]
+        barras = ax.bar(
+            df_graf.index, 
+            valores, 
+            bottom=acumulado, 
+            color=get_color(estamento), 
+            label=get_nombre(estamento)
+        )
 
-        # Etiquetas internas por estamento
         for bar in barras:
             altura = bar.get_height()
             if altura > 0:
-                ax.text(bar.get_x() + bar.get_width()/2, bar.get_y() + altura/2,
-                        f'{altura:.1f}%', ha='center', va='center', fontsize=8, color='white')
+                ax.text(
+                    bar.get_x() + bar.get_width()/2, 
+                    bar.get_y() + altura/2,
+                    f'{altura:.1f}%', 
+                    ha='center', va='center', 
+                    fontsize=8, color='white'
+                )
 
-        bottom += valores
+        acumulado += valores
 
-    # Etiquetas de porcentaje total encima de cada barra
     for i, val in enumerate(total):
-        ax.text(i, bottom[i] + 0.5, f'{val:.1f}%', ha='center', va='bottom', fontsize=9, fontweight='bold')
+        ax.text(i, acumulado[i] + 0.5, f'{val:.1f}%', ha='center', va='bottom', fontsize=9, fontweight='bold')
 
     ax.set_title(titulo)
     ax.set_ylabel('% Votos ponderados')
     ax.set_xlabel('Candidatura')
-    ax.set_xticks(range(len(df_plot.index)))
-    ax.set_xticklabels(df_plot.index)
+    ax.set_xticks(range(len(df_graf.index)))
+    ax.set_xticklabels(df_graf.index)
     ax.legend(title='Estamento')
     plt.tight_layout()
     plt.show()
 
-# Calcular y graficar
-ponderado_v1 = calcular_votos_ponderados(votos_v1)
-ponderado_v2 = calcular_votos_ponderados(votos_v2)
-
-graficar_barras_apiladas(ponderado_v1, 'Distribución de votos ponderados por estamento (Primera vuelta 2021)')
-
-graficar_barras_apiladas(weighted_v2, 'Distribución de votos ponderados por estamento (Segunda vuelta 2021)')
+graficar_barras_apiladas(ponderados_v1, 'Distribución de votos ponderados por estamento (Primera vuelta 2021)')
+graficar_barras_apiladas(ponderados_v2, 'Distribución de votos ponderados por estamento (Segunda vuelta 2021)')
 
 # Cargar y procesar todos los ficheros de participación disponibles
-import glob
-import os
-
 def extraer_info_nombre(nombre):
     base = os.path.basename(nombre)
     partes = base.split('_')
@@ -220,11 +207,16 @@ for archivo in archivos:
     anio, vuelta = extraer_info_nombre(archivo)
     df = pd.read_csv(archivo, delimiter='\t')
     for estamento in df['Category'].unique():
-        sub = df[df['Category'] == estamento]
-        censo = sub['Censo'].sum()
-        votos = sub['Votos'].sum()
+        sub_df = df[df['Category'] == estamento]
+        censo = sub_df['Censo'].sum()
+        votos = sub_df['Votos'].sum()
         pct = 100 * votos / censo if censo > 0 else 0
-        resumen.append({'Año': anio, 'Vuelta': vuelta, 'Estamento': estamento, '% Participación': pct})
+        resumen.append({
+            'Año': anio, 
+            'Vuelta': vuelta, 
+            'Estamento': get_nombre(estamento), 
+            '% Participación': pct
+        })
 
 historico = pd.DataFrame(resumen)
 historico
@@ -235,7 +227,13 @@ plt.figure(figsize=(10, 6))
 for estamento in historico['Estamento'].unique():
     datos = historico[historico['Estamento'] == estamento]
     x = datos['Año'] + '-' + datos['Vuelta']
-    color = colores_estamentos.get(estamento, '#333333')  # Obtener el color específico para el estamento
+    color = None
+    # Buscar clave original para usar get_color
+    for clave, info in estamentos_info.items():
+        if info['nombre'] == estamento:
+            color = info['color']
+            break
+
     plt.plot(x, datos['% Participación'], marker='o', label=estamento, color=color)
 plt.ylabel('% Participación')
 plt.xlabel('Elección (Año-Vuelta)')
