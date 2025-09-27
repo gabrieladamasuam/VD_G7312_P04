@@ -215,17 +215,24 @@ def graficar_evolucion_participacion(df: pd.DataFrame, titulo: str):
 # Llamada a la función con el título deseado
 graficar_evolucion_participacion(historico, 'Histórico de participación por estamento (2017–2025)')
 
+##########################################################################################################################################
+
+# Renombrar centros para mejor visualización
+CENTER_RENAMES = {
+    'RECTORADO_PAS': 'RECTORADO PAS',
+    'RECTORADO_PDIF': 'RECTORADO PDIF',
+}
 
 # Añadir columna de porcentaje de participación si no existe
-def agregar_porcentaje_participacion(df):
+def agregar_porcentaje_participacion(df: pd.DataFrame) -> pd.DataFrame:
     if '% Participación' not in df.columns:
         df = df.copy()
         df['% Participación'] = df['Votos'] / df['Censo'] * 100
     return df[df['Censo'] > 0]
 
-# Función para graficar subplots por centro y estamento para una vuelta
-def graficar_subplots_participacion(df, titulo):
-    df = calcular_participacion_est(df)
+def graficar_subplots_participacion(df: pd.DataFrame, titulo: str):
+    df = agregar_porcentaje_participacion(df)
+    df['Center'] = df['Center'].replace(CENTER_RENAMES)
     centros = sorted(df['Center'].unique())
     n = len(centros)
     ncols = 4
@@ -241,9 +248,10 @@ def graficar_subplots_participacion(df, titulo):
         valores = datos['% Participación']
         colores = [get_color(est) for est in estamentos]
         nombres = [get_nombre(est) for est in estamentos]
-        ax.bar(nombres, valores, color=colores)
+        bars = ax.bar(nombres, valores, color=colores)
         ax.set_title(centro, fontsize=10)
-        ax.set_xticklabels(nombres, rotation=45, ha='right', fontsize=8)
+        ax.set_xticks(range(len(nombres)))
+        ax.set_xticklabels(nombres, rotation=0, ha='center', fontsize=8)
         for j, v in enumerate(valores):
             ax.text(j, v + 1, f'{v:.1f}%', ha='center', va='bottom', fontsize=8)
         ax.set_ylim(0, 100)
@@ -252,11 +260,25 @@ def graficar_subplots_participacion(df, titulo):
     # Eliminar subplots vacíos
     for j in range(i + 1, len(axes)):
         fig.delaxes(axes[j])
+        
+    # Crear handles y labels para la leyenda
+    import matplotlib.patches as mpatches
+    handles = [mpatches.Patch(color=get_color(est), label=get_nombre(est)) for est in estamentos_info.keys()]
+    fig.legend(handles=handles, loc='lower right', bbox_to_anchor=(0.8, 0.1), title='Estamento')
 
     fig.suptitle(titulo, fontsize=14)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
-
-# Graficar para cada vuelta usando los DataFrames ya cargados
+    
 graficar_subplots_participacion(participacion_2021_v1, 'Participación por estamento y centro - Elecciones 2021 (Vuelta 1)')
 graficar_subplots_participacion(participacion_2021_v2, 'Participación por estamento y centro - Elecciones 2021 (Vuelta 2)')
+
+# Para la primera vuelta
+df1 = agregar_porcentaje_participacion(participacion_2021_v1)
+max1 = df1.loc[df1['% Participación'].idxmax()]
+print(f"En la primera vuelta, el centro {max1['Center']} y el estamento {get_nombre(max1['Category'])} obtuvieron la máxima participación, con un {max1['% Participación']:.1f}%")
+
+# Para la segunda vuelta
+df2 = agregar_porcentaje_participacion(participacion_2021_v2)
+max2 = df2.loc[df2['% Participación'].idxmax()]
+print(f"En la segunda vuelta, el centro {max2['Center']} y el estamento {get_nombre(max2['Category'])} obtuvieron la máxima participación, con un {max2['% Participación']:.1f}%")
